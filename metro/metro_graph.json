@@ -26,6 +26,7 @@
       }
     ]
   },
+
   {
     "station": "보산_1",
     "line": "1",
@@ -13128,48 +13129,48 @@
     ]
   },
   {
-    "station": "문화공원동대문역사_2",
+    "station": "동대문역사문화공원_2",
     "line": "2",
     "neighbors": [
       {
-        "station": "문화공원동대문역사_4",
+        "station": "동대문역사문화공원_4",
         "line": "4",
         "time": 5
       },
       {
-        "station": "문화공원동대문역사_5",
+        "station": "동대문역사문화공원_5",
         "line": "5",
         "time": 5
       }
     ]
   },
   {
-    "station": "문화공원동대문역사_4",
+    "station": "동대문역사문화공원_4",
     "line": "4",
     "neighbors": [
       {
-        "station": "문화공원동대문역사_2",
+        "station": "동대문역사문화공원_2",
         "line": "2",
         "time": 5
       },
       {
-        "station": "문화공원동대문역사_5",
+        "station": "동대문역사문화공원_5",
         "line": "5",
         "time": 5
       }
     ]
   },
   {
-    "station": "문화공원동대문역사_5",
+    "station": "동대문역사문화공원_5",
     "line": "5",
     "neighbors": [
       {
-        "station": "문화공원동대문역사_2",
+        "station": "동대문역사문화공원_2",
         "line": "2",
         "time": 5
       },
       {
-        "station": "문화공원동대문역사_4",
+        "station": "동대문역사문화공원_4",
         "line": "4",
         "time": 5
       }
