@@ -334,7 +334,7 @@ router.post("/", async (req, res) => {
 router.patch("/:promiseId/join/:userId", async (req, res) => {
   const { promiseId, userId } = req.params;
   const { nearestStation, availableTimes } = req.body;
-  if (!promiseId || !userId || !nearestStation || !availableTimes)
+  if (!promiseId || !userId || !nearestStation)
     return sendError(res, "MISSING_REQUIRED_FIELD", "필수 필드 누락");
   if (
     !Array.isArray(availableTimes) ||
@@ -357,14 +357,28 @@ router.patch("/:promiseId/join/:userId", async (req, res) => {
     if (!promise.memberIds.includes(userId)) {
       await promisesCollection.updateOne(
         { _id: new ObjectId(promiseId) },
-        { $addToSet: { memberIds: userId } },
+        {
+          // participants라는 배열 안에 유저별 정보를 객체로 push
+          $push: {
+            participants: {
+              userId: userId,
+              nearestStation,
+              availableTimes,
+            },
+          },
+          // 중복 참여 방지를 위해 memberIds에도 추가
+          $addToSet: { memberIds: userId },
+        },
       );
     }
-    await userCollection.updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { nearestStation, availableTimes } },
-    );
-    res.status(200).json({ success: true, times: availableTimes });
+    res.status(200).json({
+      success: true,
+      message: "약속 참여가 완료되었습니다.",
+      data: {
+        joinedPromise: promiseId,
+        participant: userId,
+      },
+    });
   } catch {
     sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
   }
@@ -424,7 +438,6 @@ router.patch("/:promiseId/finalize", async (req, res) => {
 });
 
 
-// 
 // 좋아요 정보 조회
 router.get("/likes", async (req, res) => {
   const { promiseId, placeId, userId } = req.query;
@@ -518,6 +531,5 @@ router.delete("/likes", async (req, res) => {
     sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
   }
 });
-
 
 export default router;

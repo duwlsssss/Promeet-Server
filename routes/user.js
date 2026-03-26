@@ -7,7 +7,7 @@ import { sendError } from "../utils/error.js";
 const router = express.Router();
 
 // 내 정보 조회
-router.get("/user/:userId", async (req, res) => {
+router.get("/:userId", async (req, res) => {
   const { userId } = req.params;
   if (!userId)
     return sendError(
@@ -40,7 +40,7 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // 고정 스케줄 등록
-router.post("/user/:userId/fixed-schedules", async (req, res) => {
+router.post("/:userId/fixed-schedules", async (req, res) => {
   const { userId } = req.params;
   const { fixedSchedules } = req.body;
   if (!userId || !fixedSchedules)
@@ -96,7 +96,7 @@ router.post("/user/:userId/fixed-schedules", async (req, res) => {
 });
 
 // 고정 스케줄 삭제
-router.delete("/user/:userId/fixed-schedules/:scheduleId", async (req, res) => {
+router.delete("/:userId/fixed-schedules/:scheduleId", async (req, res) => {
   const { userId, scheduleId } = req.params;
   try {
     const user = await userCollection.findOne({
@@ -118,7 +118,7 @@ router.delete("/user/:userId/fixed-schedules/:scheduleId", async (req, res) => {
 });
 
 // 고정 스케줄 수정
-router.patch("/user/:userId/fixed-schedules/:scheduleId", async (req, res) => {
+router.patch("/:userId/fixed-schedules/:scheduleId", async (req, res) => {
   const { userId, scheduleId } = req.params;
   const { fixedSchedule } = req.body;
   if (!userId || !scheduleId || !fixedSchedule)

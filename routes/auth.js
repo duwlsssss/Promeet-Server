@@ -7,7 +7,7 @@ import { sendError } from "../utils/error.js";
 const router = express.Router();
 
 // 로그아웃
-router.post("/auth/logout", async (req, res) => {
+router.post("/logout", async (req, res) => {
   const { userId } = req.body;
   if (!userId) return sendError(res, "MISSING_REQUIRED_FIELD", "userId는 필수");
   try {
@@ -23,7 +23,7 @@ router.post("/auth/logout", async (req, res) => {
 });
 
 // 회원가입
-router.post("/auth/signup", async (req, res) => {
+router.post("/signup", async (req, res) => {
   const { name, password } = req.body;
   if (!name || !password)
     return sendError(res, "MISSING_REQUIRED_FIELD", "이름과 비밀번호는 필수");
@@ -42,6 +42,56 @@ router.post("/auth/signup", async (req, res) => {
       data: { userId: result.insertedId.toString(), name },
     });
   } catch {
+    sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
+  }
+});
+
+// 로그인
+router.post("/signin", async (req, res) => {
+  const { name, password, promiseId } = req.body;
+
+  if (!name || !password)
+    return sendError(res, "MISSING_REQUIRED_FIELD", "이름과 비밀번호는 필수");
+
+  try {
+    let user = await userCollection.findOne({ name });
+
+    // 사용자가 없으면 자동으로 회원가입 시키거나 에러를 냅니다.
+    // 여기서는 기존 로직대로 '없으면 생성' 방식을 유지해볼게요.
+    if (!user) {
+      const result = await userCollection.insertOne({
+        name,
+        password,
+        promise: { create: [], join: [] }, // 필드 구조 맞춰주기
+        fixedSchedules: [],
+      });
+      user = await userCollection.findOne({ _id: result.insertedId });
+    } else if (user.password !== password) {
+      return sendError(
+        res,
+        "INVALID_PASSWORD",
+        "비밀번호가 일치하지 않습니다",
+        401,
+      );
+    }
+
+    // promiseId가 있는 경우 참여 목록에 추가
+    if (promiseId) {
+      await userCollection.updateOne(
+        { _id: user._id },
+        { $addToSet: { "promise.join": promiseId } },
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        userId: user._id.toString(),
+        name: user.name,
+      },
+    });
+  } catch (error) {
+    console.error(error);
     sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
   }
 });
