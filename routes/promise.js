@@ -63,7 +63,6 @@ router.get("/:promiseId", async (req, res) => {
     const members = membersRaw.map((m) => {
       const mId = m._id.toString();
       const isCreator = mId === promise.creatorId;
-      // .has(...) 함수 호출로 수정
       const hasLikedPlace = isCreator ? true : likedUserIds.has(mId);
 
       return {
@@ -177,6 +176,7 @@ router.get("/:promiseId", async (req, res) => {
       data: {
         promiseId: promise._id,
         title: promise.title,
+        description: promise.description,
         creatorId: promise.creatorId,
         members,
         memberCnt: promise.memberCnt,
@@ -203,7 +203,7 @@ router.get("/:promiseId", async (req, res) => {
   }
 });
 
-// 약속 생성자 정보 조회
+// 약속 요약 정보 조회
 router.get("/:promiseId/summary", async (req, res) => {
   const { promiseId } = req.params;
   if (!promiseId)
@@ -224,6 +224,7 @@ router.get("/:promiseId/summary", async (req, res) => {
     });
     if (!creator)
       return sendError(res, "USER_NOT_FOUND", "생성자 정보 없음", 404);
+
     res.status(200).json({
       success: true,
       data: {
@@ -233,35 +234,6 @@ router.get("/:promiseId/summary", async (req, res) => {
         description: promise.description,
       },
     });
-  } catch {
-    sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
-  }
-});
-
-// 로그인
-router.post("/auth/signin", async (req, res) => {
-  const { name, password, promiseId } = req.body;
-  if (!name || !password)
-    return sendError(res, "MISSING_REQUIRED_FIELD", "이름과 비밀번호는 필수");
-  try {
-    let user = await userCollection.findOne({ name });
-    if (!user) {
-      const result = await userCollection.insertOne({
-        name,
-        password,
-        promise: { join: [] },
-      });
-      user = await userCollection.findOne({ _id: result.insertedId });
-    } else if (user.password !== password) {
-      return sendError(res, "INVALID_PASSWORD", "비밀번호가 일치하지 않습니다");
-    }
-    if (promiseId) {
-      await userCollection.updateOne(
-        { _id: user._id },
-        { $addToSet: { "promise.join": promiseId } },
-      );
-    }
-    res.status(200).json({ success: true, data: { userId: user._id } });
   } catch {
     sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
   }
@@ -334,7 +306,7 @@ router.post("/", async (req, res) => {
 router.patch("/:promiseId/join/:userId", async (req, res) => {
   const { promiseId, userId } = req.params;
   const { nearestStation, availableTimes } = req.body;
-  if (!promiseId || !userId || !nearestStation)
+  if (!promiseId || !userId || !nearestStation?.id || !nearestStation?.name)
     return sendError(res, "MISSING_REQUIRED_FIELD", "필수 필드 누락");
   if (
     !Array.isArray(availableTimes) ||
@@ -401,9 +373,9 @@ router.patch("/:promiseId/finalize", async (req, res) => {
         _id: { $in: promise.memberIds.map((id) => new ObjectId(id)) },
       })
       .toArray();
-    const isAllMembersSubmit = members.every(
-      (m) => m.nearestStation && m.availableTimes,
-    );
+    const isAllMembersSubmit =
+      members.length === promise.memberCnt &&
+      members.every((m) => m.hasSubmittedData);
     const likedPlacesRaw = await likesCollection
       .aggregate([
         { $match: { promiseId } },
@@ -436,7 +408,6 @@ router.patch("/:promiseId/finalize", async (req, res) => {
     sendError(res, "SERVER_ERROR", "서버에 문제 발생", 500);
   }
 });
-
 
 // 좋아요 정보 조회
 router.get("/likes", async (req, res) => {
