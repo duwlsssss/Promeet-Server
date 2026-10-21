@@ -60,17 +60,26 @@ router.get("/:promiseId", async (req, res) => {
     );
 
     // 2. 멤버 정보 매핑
+    // 참여자의 nearestStation/availableTimes는 user doc이 아닌 promise.participants에 저장됨
+    const participantsMap = new Map(
+      (promise.participants ?? []).map((p) => [p.userId, p])
+    );
+
     const members = membersRaw.map((m) => {
       const mId = m._id.toString();
       const isCreator = mId === promise.creatorId;
       const hasLikedPlace = isCreator ? true : likedUserIds.has(mId);
 
+      const participantData = participantsMap.get(mId);
+      const nearestStation = isCreator ? m.nearestStation : participantData?.nearestStation;
+      const availableTimes = isCreator ? m.availableTimes : participantData?.availableTimes;
+
       return {
         name: m.name,
         userId: mId,
-        hasSubmittedData: !!(m.nearestStation && m.availableTimes),
-        nearestStation: m.nearestStation,
-        availableTimes: m.availableTimes,
+        hasSubmittedData: !!(nearestStation && availableTimes),
+        nearestStation,
+        availableTimes,
         hasLikedPlace,
       };
     });
@@ -80,6 +89,22 @@ router.get("/:promiseId", async (req, res) => {
       members.length === promise.memberCnt &&
       members.every((m) => m.hasSubmittedData);
     const allMembersLiked = members.every((m) => m.hasLikedPlace);
+
+    // 모든 멤버의 availableTimes 교집합
+    let fixedTime = promise.fixedTime ?? null;
+    if (!fixedTime && isAllMembersSubmit) {
+      const validMembers = members.filter((m) => m.availableTimes?.length > 0);
+      if (validMembers.length > 0) {
+        const toKey = (t) => `${t.date}_${t.startTime}_${t.endTime}`;
+        const commonKeys = validMembers.reduce((acc, m) => {
+          const keys = new Set(m.availableTimes.map(toKey));
+          return new Set([...acc].filter((k) => keys.has(k)));
+        }, new Set(validMembers[0].availableTimes.map(toKey)));
+        fixedTime = validMembers[0].availableTimes
+          .filter((t) => commonKeys.has(toKey(t)))
+          .map(({ date, day, startTime, endTime }) => ({ date, day, startTime, endTime }));
+      }
+    }
 
     let routes = [];
     let centerStation = null;
@@ -195,6 +220,7 @@ router.get("/:promiseId", async (req, res) => {
           !promise.isFixed,
         isFixed: !!promise.isFixed,
         fixedPlace: promise.fixedPlace || null,
+        fixedTime,
       },
     });
   } catch (e) {
@@ -261,7 +287,7 @@ router.post("/", async (req, res) => {
   if (
     !Array.isArray(availableTimes) ||
     availableTimes.some(
-      (s) => !s.id || !s.date || !s.day || !s.startTime || !s.endTime,
+      (s) => !s.date || !s.day || !s.startTime || !s.endTime,
     )
   )
     return sendError(res, "INVALID_FORMAT", "약속 정보 형식이 잘못됨", 422);
@@ -311,7 +337,7 @@ router.patch("/:promiseId/join/:userId", async (req, res) => {
   if (
     !Array.isArray(availableTimes) ||
     availableTimes.some(
-      (s) => !s.id || !s.date || !s.day || !s.startTime || !s.endTime,
+      (s) => !s.date || !s.day || !s.startTime || !s.endTime,
     )
   )
     return sendError(res, "INVALID_FORMAT", "약속 정보 형식이 잘못됨", 422);
@@ -368,14 +394,25 @@ router.patch("/:promiseId/finalize", async (req, res) => {
     });
     if (!promise)
       return sendError(res, "PROMISE_NOT_FOUND", "존재하지 않는 약속", 404);
-    const members = await userCollection
+    const membersRaw = await userCollection
       .find({
         _id: { $in: promise.memberIds.map((id) => new ObjectId(id)) },
       })
       .toArray();
+    const participantsMap = new Map(
+      (promise.participants ?? []).map((p) => [p.userId, p])
+    );
+    const members = membersRaw.map((m) => {
+      const mId = m._id.toString();
+      const isCreator = mId === promise.creatorId;
+      const participantData = participantsMap.get(mId);
+      const nearestStation = isCreator ? m.nearestStation : participantData?.nearestStation;
+      const availableTimes = isCreator ? m.availableTimes : participantData?.availableTimes;
+      return { ...m, nearestStation, availableTimes };
+    });
     const isAllMembersSubmit =
       members.length === promise.memberCnt &&
-      members.every((m) => m.hasSubmittedData);
+      members.every((m) => m.nearestStation && m.availableTimes);
     const likedPlacesRaw = await likesCollection
       .aggregate([
         { $match: { promiseId } },
@@ -399,9 +436,25 @@ router.patch("/:promiseId/finalize", async (req, res) => {
         "약속을 확정할 수 있는 조건이 충족되지 않았거나 권한이 없음",
         403,
       );
+
+    const membersWithTimes = members.filter((m) => m.availableTimes?.length > 0);
+    const toKey = (t) => `${t.date}_${t.startTime}_${t.endTime}`;
+    const fixedTime =
+      membersWithTimes.length > 0
+        ? membersWithTimes
+            .reduce(
+              (acc, m) => {
+                const keys = new Set(m.availableTimes.map(toKey));
+                return acc.filter((t) => keys.has(toKey(t)));
+              },
+              [...membersWithTimes[0].availableTimes],
+            )
+            .map(({ date, day, startTime, endTime }) => ({ date, day, startTime, endTime }))
+        : [];
+
     await promisesCollection.updateOne(
       { _id: new ObjectId(promiseId) },
-      { $set: { fixedPlace: place, isFixed: true, canFix: false } },
+      { $set: { fixedPlace: place, fixedTime, isFixed: true, canFix: false } },
     );
     res.status(200).json({ success: true });
   } catch {
