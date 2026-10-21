@@ -18,7 +18,7 @@ app.use(express.json());
 // cors 설정
 const allowedOrigins = [
   "http://localhost:5173", // 로컬 환경
-  "https://promeet-six.vercel.app", // Vercel 배포 환경
+  "https://promeet-gilt.vercel.app", // Vercel 배포 환경
 ];
 
 app.use(
@@ -34,6 +34,9 @@ app.use(
     credentials: true,
   }),
 );
+
+// 헬스체크
+app.get("/", (req, res) => res.status(200).send("OK"));
 
 // 라우터 연결
 app.use("/auth", authRouter);

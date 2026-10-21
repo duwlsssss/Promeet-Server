@@ -1,3 +1,0 @@
-runtime: nodejs22
-
-entrypoint: node --es-module-specifier-resolution=node index.js
