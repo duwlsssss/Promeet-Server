@@ -38,6 +38,17 @@ app.use(
 // 헬스체크
 app.get("/", (req, res) => res.status(200).send("OK"));
 
+// 배포용 헬스체크: DB 연결까지 확인 (Nginx 블루/그린 전환 전 사용)
+let database;
+app.get("/health", async (req, res) => {
+  try {
+    await database.command({ ping: 1 });
+    res.status(200).json({ status: "ok" });
+  } catch (err) {
+    res.status(503).json({ status: "db_unavailable" });
+  }
+});
+
 // 라우터 연결
 app.use("/auth", authRouter);
 app.use("/user", userRouter);
@@ -48,12 +59,14 @@ async function start() {
   try {
     // DB 연결
     const { db } = await connectDB();
+    database = db;
     // 지하철 데이터 로드
     await loadMetroData(db);
     // 서버 리스닝
     app.listen(PORT, () => console.log(`서버 실행 중: ${PORT}`));
   } catch (err) {
     console.error("서버 시작 실패:", err);
+    process.exit(1); // 실패 시 컨테이너를 종료해 배포가 실패로 감지되게 함
   }
 }
 
