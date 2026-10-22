@@ -1,0 +1,90 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Actions 탭에서 수동 실행도 가능
+
+permissions:
+  id-token: write # OIDC로 AWS 임시 자격 증명 발급
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # 배포가 겹치지 않게 순서대로
+
+env:
+  AWS_REGION: ap-northeast-2
+  PROJECT: promeet
+
+jobs:
+  deploy:
+    # EC2가 ARM(t4g)이라 ARM 러너에서 빌드 (public 레포는 무료)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AWS 자격 증명 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR 로그인
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 이미지 빌드 & 푸시
+        id: image
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${PROJECT}-server:${GITHUB_SHA::7}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: 환경변수를 Parameter Store에 저장
+        env:
+          MONGO_URL: ${{ secrets.MONGO_URL }}
+          DEFAULT_LAT: ${{ vars.DEFAULT_LAT }}
+          DEFAULT_LNG: ${{ vars.DEFAULT_LNG }}
+        run: |
+          aws ssm put-parameter --name "/${PROJECT}/MONGO_URL" --type SecureString --overwrite --value "$MONGO_URL" > /dev/null
+          aws ssm put-parameter --name "/${PROJECT}/DEFAULT_LAT" --type String --overwrite --value "$DEFAULT_LAT" > /dev/null
+          aws ssm put-parameter --name "/${PROJECT}/DEFAULT_LNG" --type String --overwrite --value "$DEFAULT_LNG" > /dev/null
+
+      - name: 배포 스크립트 업로드 (S3)
+        id: s3
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="${PROJECT}-deploy-${ACCOUNT_ID}"
+          aws s3 cp deploy/deploy.sh "s3://${BUCKET}/deploy.sh"
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+
+      - name: EC2에서 블루/그린 배포 실행 (SSM)
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${PROJECT}-server" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          echo "대상 인스턴스: $INSTANCE_ID"
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "deploy ${GITHUB_SHA::7}" \
+            --parameters "commands=[\"aws s3 cp s3://${{ steps.s3.outputs.bucket }}/deploy.sh /opt/promeet/deploy.sh\",\"bash /opt/promeet/deploy.sh ${{ steps.image.outputs.uri }}\"]" \
+            --query 'Command.CommandId' --output text)
+
+          # 완료까지 최대 5분 대기
+          for _ in $(seq 1 60); do
+            sleep 5
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) continue ;; *) break ;; esac
+          done
+
+          RESULT=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID")
+          echo "$RESULT" | jq -r '.StandardOutputContent'
+          echo "$RESULT" | jq -r '.StandardErrorContent'
+          STATUS=$(echo "$RESULT" | jq -r '.Status')
+          echo "결과: $STATUS"
+          [ "$STATUS" = "Success" ]
