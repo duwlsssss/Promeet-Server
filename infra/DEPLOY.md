@@ -71,7 +71,21 @@ sudo certbot renew --dry-run   # 자동 갱신 테스트
 
 - 프론트(Vercel)의 API 주소를 `https://promeet-api.duckdns.org`로 변경
 - Atlas Network Access에서 `0.0.0.0/0` 삭제 (EC2 IP만 남기기)
-- 예산 초과 시 EC2 자동 중지(Budget Action) 설정
+
+## 예산 알림 + EC2 자동 중지 (budget.tf)
+
+```bash
+cd infra
+cp terraform.tfvars.example terraform.tfvars   # 이메일 입력
+terraform plan    # 4 to add
+terraform apply
+```
+
+- 실제 비용 80% → 알림 메일, 월말 예상치 100% 초과 → 알림 메일
+- **실제 비용 100% 도달 → EC2 자동 중지** (Budgets 비용 집계는 하루 몇 번 갱신이라 즉시 멈추진 않음)
+- 콘솔에서 따로 만든 예산이 있으면 알림이 중복되니 삭제해도 됨
+- 중지된 서버 다시 켜기: `aws ec2 start-instances --instance-ids $(terraform output -raw instance_id)` (컨테이너·Nginx는 자동 재시작)
+- 중지돼도 고정 IP·디스크 요금은 계속 나감. 완전히 멈추려면 `terraform destroy`
 
 ## 무중단 배포 동작 (deploy/deploy.sh)
 
