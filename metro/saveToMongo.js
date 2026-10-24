@@ -7,7 +7,7 @@ const client = new MongoClient(process.env.MONGO_URL);
 async function run() {
   try {
     await client.connect();
-    const db = client.db("account");
+    const db = client.db(process.env.MONGO_DB_NAME);
     const stationCollection = db.collection("stationTable");
     console.log("MongoDB에 연결됨");
 
