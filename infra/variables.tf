@@ -30,3 +30,14 @@ variable "github_branch" {
   type    = string
   default = "main"
 }
+
+variable "budget_limit_usd" {
+  description = "월 예산(USD). 실제 비용이 이 금액에 도달하면 EC2 자동 중지"
+  type        = number
+  default     = 20
+}
+
+variable "alert_email" {
+  description = "예산 알림을 받을 이메일 (terraform.tfvars에 설정)"
+  type        = string
+}
