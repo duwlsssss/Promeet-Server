@@ -7,6 +7,23 @@ const rawStations = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "metro/metro_graph.json"), "utf-8"),
 );
 
+// metro_graph.json의 노선 코드 → 카카오 검색용 노선명
+const LINE_NAMES = {
+  A: "공항철도",
+  B: "수인분당선",
+  E: "용인에버라인",
+  G: "경춘선",
+  I: "인천1호선",
+  I2: "인천2호선",
+  K: "경의중앙선",
+  KK: "경강선",
+  KP: "김포골드라인",
+  S: "신분당선",
+  SH: "서해선",
+  U: "의정부경전철",
+  W: "우이신설선",
+};
+
 async function getCoordinates(stationName, stationLine) {
   try {
     const response = await axios.get(
@@ -35,7 +52,7 @@ export async function transformData() {
     const [name, line] = item.station.split("_");
 
     // 카카오 검색 시에는 "신림역 2호선" 처럼 온전한 이름이 유리
-    const searchLine = line.match(/^\d+$/) ? `${line}호선` : `${line}선`;
+    const searchLine = line.match(/^\d+$/) ? `${line}호선` : LINE_NAMES[line];
     const position = await getCoordinates(name, searchLine);
 
     refinedData.push({
