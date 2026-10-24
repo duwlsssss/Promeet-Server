@@ -42,18 +42,28 @@ router.get("/:promiseId", async (req, res) => {
       .toArray();
 
     // 1. 좋아요 집계
+    // $group은 결과 순서를 보장하지 않으므로, 장소별 첫 좋아요 시각(_id의 생성 시각) 순으로 정렬
+    // → 좋아요를 눌러도 기존 장소의 순서가 바뀌지 않음 (프론트 낙관적 업데이트와 동일하게 새 장소는 뒤에)
     const likedPlacesRaw = await likesCollection
       .aggregate([
         { $match: { promiseId } },
+        { $sort: { _id: 1 } },
         {
           $group: {
             _id: "$placeId",
-            userIds: { $addToSet: "$userId" },
+            userIds: { $push: "$userId" },
             place: { $first: "$place" },
+            firstLikedAt: { $min: "$_id" },
           },
         },
+        { $sort: { firstLikedAt: 1 } },
+        { $project: { firstLikedAt: 0 } },
       ])
       .toArray();
+    // 순서 유지를 위해 $addToSet 대신 $push를 썼으므로, 동시 요청으로 생긴 중복 좋아요는 여기서 제거
+    likedPlacesRaw.forEach((lp) => {
+      lp.userIds = [...new Set(lp.userIds)];
+    });
 
     const likedUserIds = new Set();
     likedPlacesRaw.forEach((lp) =>
