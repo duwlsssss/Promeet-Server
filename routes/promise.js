@@ -11,6 +11,7 @@ import {
   evaluateCandidates,
 } from "../services/metroService.js";
 import { sendError } from "../utils/error.js";
+import { getCommonTimes } from "../utils/time.js";
 
 const router = express.Router();
 
@@ -93,17 +94,7 @@ router.get("/:promiseId", async (req, res) => {
     // 모든 멤버의 availableTimes 교집합
     let fixedTime = promise.fixedTime ?? null;
     if (!fixedTime && isAllMembersSubmit) {
-      const validMembers = members.filter((m) => m.availableTimes?.length > 0);
-      if (validMembers.length > 0) {
-        const toKey = (t) => `${t.date}_${t.startTime}_${t.endTime}`;
-        const commonKeys = validMembers.reduce((acc, m) => {
-          const keys = new Set(m.availableTimes.map(toKey));
-          return new Set([...acc].filter((k) => keys.has(k)));
-        }, new Set(validMembers[0].availableTimes.map(toKey)));
-        fixedTime = validMembers[0].availableTimes
-          .filter((t) => commonKeys.has(toKey(t)))
-          .map(({ date, day, startTime, endTime }) => ({ date, day, startTime, endTime }));
-      }
+      fixedTime = getCommonTimes(members);
     }
 
     let routes = [];
@@ -217,6 +208,7 @@ router.get("/:promiseId", async (req, res) => {
           userId === promise.creatorId &&
           isAllMembersSubmit &&
           allMembersLiked &&
+          fixedTime?.length > 0 && // 겹치는 시간이 없으면 확정 불가
           !promise.isFixed,
         isFixed: !!promise.isFixed,
         fixedPlace: promise.fixedPlace || null,
@@ -437,20 +429,14 @@ router.patch("/:promiseId/finalize", async (req, res) => {
         403,
       );
 
-    const membersWithTimes = members.filter((m) => m.availableTimes?.length > 0);
-    const toKey = (t) => `${t.date}_${t.startTime}_${t.endTime}`;
-    const fixedTime =
-      membersWithTimes.length > 0
-        ? membersWithTimes
-            .reduce(
-              (acc, m) => {
-                const keys = new Set(m.availableTimes.map(toKey));
-                return acc.filter((t) => keys.has(toKey(t)));
-              },
-              [...membersWithTimes[0].availableTimes],
-            )
-            .map(({ date, day, startTime, endTime }) => ({ date, day, startTime, endTime }))
-        : [];
+    const fixedTime = getCommonTimes(members);
+    if (fixedTime.length === 0)
+      return sendError(
+        res,
+        "NO_COMMON_TIME",
+        "모든 멤버가 가능한 공통 시간이 없음",
+        400,
+      );
 
     await promisesCollection.updateOne(
       { _id: new ObjectId(promiseId) },
