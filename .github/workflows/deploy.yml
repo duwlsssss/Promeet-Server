@@ -45,10 +45,12 @@ jobs:
       - name: 환경변수를 Parameter Store에 저장
         env:
           MONGO_URL: ${{ secrets.MONGO_URL }}
+          MONGO_DB_NAME: ${{ vars.MONGO_DB_NAME }}
           DEFAULT_LAT: ${{ vars.DEFAULT_LAT }}
           DEFAULT_LNG: ${{ vars.DEFAULT_LNG }}
         run: |
           aws ssm put-parameter --name "/${PROJECT}/MONGO_URL" --type SecureString --overwrite --value "$MONGO_URL" > /dev/null
+          aws ssm put-parameter --name "/${PROJECT}/MONGO_DB_NAME" --type String --overwrite --value "$MONGO_DB_NAME" > /dev/null
           aws ssm put-parameter --name "/${PROJECT}/DEFAULT_LAT" --type String --overwrite --value "$DEFAULT_LAT" > /dev/null
           aws ssm put-parameter --name "/${PROJECT}/DEFAULT_LNG" --type String --overwrite --value "$DEFAULT_LNG" > /dev/null
 

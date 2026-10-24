@@ -10,7 +10,7 @@ export let db, userCollection, likesCollection, promisesCollection;
 
 export async function connectDB() {
   await client.connect();
-  const database = client.db("account");
+  const database = client.db(process.env.MONGO_DB_NAME);
   db = database;
   userCollection = database.collection("userTable");
   likesCollection = database.collection("likeTable");
